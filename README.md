@@ -1,356 +1,173 @@
-# image-template
+# bootc-image
 
-This repository is meant to be a template for building your own custom [bootc](https://github.com/bootc-dev/bootc) image. This template is the recommended way to make customizations to any image published by the Universal Blue Project.
+基于 [Bazzite DX](https://github.com/ublue-os/bazzite)（KDE + NVIDIA open 内核模块）的个人
+bootc 镜像，按 [ublue-os/image-template](https://github.com/ublue-os/image-template) 的官方结构维护。
 
-# Community
-
-If you have questions about this template after following the instructions, try the following spaces:
-- [Universal Blue Forums](https://universal-blue.discourse.group/)
-- [Universal Blue Discord](https://discord.gg/8RZGC3uFzA)
-- [bootc discussion forums](https://github.com/bootc-dev/bootc/discussions) - This is not an Universal Blue managed space, but is an excellent resource if you run into issues with building bootc images.
-
-# How to Use
-
-To get started on your first bootc image, simply read and follow the steps in the next few headings.
-If you prefer instructions in video form, TesterTech created an excellent tutorial, embedded below.
-
-[![Video Tutorial](https://img.youtube.com/vi/IxBl11Zmq5w/0.jpg)](https://www.youtube.com/watch?v=IxBl11Zmq5wE)
-
-## Step 0: Prerequisites
-
-These steps assume you have the following:
-- A Github Account
-- A machine running a bootc image (e.g. Bazzite, Bluefin, Aurora, or Fedora Atomic)
-- Experience installing and using CLI programs
-
-## Step 1: Preparing the Template
-
-### Step 1a: Copying the Template
-
-Select `Use this Template` on this page. You can set the name and description of your repository to whatever you would like, but all other settings should be left untouched.
-
-Once you have finished copying the template, you need to enable the Github Actions workflows for your new repository.
-To enable the workflows, go to the `Actions` tab of the new repository and click the button to enable workflows.
-
-### Step 1b: Cloning the New Repository
-
-Here I will defer to the much superior GitHub documentation on the matter. You can use whichever method is easiest.
-[GitHub Documentation](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository)
-
-Once you have the repository on your local drive, proceed to the next step.
-
-## Step 2: Initial Setup
-
-### Step 2a: Creating a Cosign Key
-
-Container signing is important for end-user security and is enabled on all Universal Blue images. By default the image builds *will fail* if you don't.
-
-First, install the [cosign CLI tool](https://edu.chainguard.dev/open-source/sigstore/cosign/how-to-install-cosign/#installing-cosign-with-the-cosign-binary)
-With the cosign tool installed, run inside your repo folder:
-
-```bash
-COSIGN_PASSWORD="" cosign generate-key-pair
-```
-
-The signing key will be used in GitHub Actions and will not work if it is password protected.
-
-> [!WARNING]
-> Be careful to *never* accidentally commit `cosign.key` into your git repo. If this key goes out to the public, the security of your repository is compromised.
-
-Next, you need to add the key to GitHub. This makes use of GitHub's secret signing system.
-
-<details>
-    <summary>Using the Github Web Interface (preferred)</summary>
-
-Go to your repository settings, under `Secrets and Variables` -> `Actions`
-![image](https://user-images.githubusercontent.com/1264109/216735595-0ecf1b66-b9ee-439e-87d7-c8cc43c2110a.png)
-Add a new secret and name it `SIGNING_SECRET`, then paste the contents of `cosign.key` into the secret and save it. Make sure it's the .key file and not the .pub file. Once done, it should look like this:
-![image](https://user-images.githubusercontent.com/1264109/216735690-2d19271f-cee2-45ac-a039-23e6a4c16b34.png)
-</details>
-<details>
-<summary>Using the Github CLI</summary>
-
-If you have the `github-cli` installed, run:
-
-```bash
-gh secret set SIGNING_SECRET < cosign.key
-```
-</details>
-
-### Step 2b: Choosing Your Base Image
-
-To choose a base image, simply modify the line in the container file starting with `FROM`. This will be the image your image derives from, and is your starting point for modifications.
-For a base image, you can choose any of the Universal Blue images or start from a Fedora Atomic system. Below this paragraph is a dropdown with a non-exhaustive list of potential base images.
-
-<details>
-    <summary>Base Images</summary>
-
-- Bazzite: `ghcr.io/ublue-os/bazzite:stable`
-- Aurora: `ghcr.io/ublue-os/aurora:stable`
-- Bluefin: `ghcr.io/ublue-os/bluefin:stable`
-- Universal Blue Base: `ghcr.io/ublue-os/base-main:latest`
-- Fedora: `quay.io/fedora/fedora-bootc:44`
-
-You can find more Universal Blue images on the [packages page](https://github.com/orgs/ublue-os/packages).
-</details>
-
-If you don't know which image to pick, choosing the one your system is currently on is the best bet for a smooth transition. To find out what image your system currently uses, run the following command:
-```bash
-sudo bootc status
-```
-This will show you all the info you need to know about your current image. The image you are currently on is displayed after `Booted image:`. Paste that information after the `FROM` statement in the Containerfile to set it as your base image.
-
-### Adding NVIDIA drivers
-
-The standalone `base-nvidia`, `silverblue-nvidia`, and `kinoite-nvidia` images have been retired following [ublue-os/main#927](https://github.com/ublue-os/main/issues/927). To add NVIDIA drivers to your own image, use the installer included in [akmods](https://github.com/ublue-os/akmods).
-
-For Silverblue on Fedora 44, keep the `ctx` stage in your `Containerfile` and replace the default Bazzite `FROM` line with:
+仓库只做一层薄定制：桌面、内核、驱动、Flatpak、更新器全部跟随基座，出问题先怀疑基座还是这里
+改的那几块。切换 / 回滚 / 升级都走 bootc，不重装系统。
 
 ```dockerfile
-FROM ghcr.io/ublue-os/akmods-nvidia-open:main-44 AS nvidia-akmods
-FROM ghcr.io/ublue-os/silverblue-main:44
+FROM ghcr.io/ublue-os/bazzite-dx-nvidia:latest
 ```
 
-Add the NVIDIA RPM mount to the existing `RUN` instruction:
+| 由基座提供 | 由本仓库提供 |
+| --- | --- |
+| KDE Plasma（Kinoite 基础）、NVIDIA open 驱动与 kargs | 中文语言包 + fcitx5 输入法 |
+| flatpak / Flathub、podman、distrobox、brew | Clash Verge Rev（GUI + TUN） |
+| VS Code、Docker CE、incus/libvirt、Cockpit（DX 变体） | v2rayA（Web UI + 内置核心） |
+| uupd 自动更新、Secure Boot 签名链路 | NVIDIA 插电锁频、字体、KDE 主题、Vimix GRUB 主题 |
 
-```dockerfile
-RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
-    --mount=type=cache,dst=/var/cache \
-    --mount=type=cache,dst=/var/log \
-    --mount=type=tmpfs,dst=/tmp \
-    --mount=type=bind,from=nvidia-akmods,source=/rpms,target=/tmp/akmods-rpms \
-    /ctx/build.sh
-```
+## 目录结构（官方约定）
 
-Then add this to the end of `build_files/build.sh` to install the drivers and rebuild the initramfs:
+| 路径 | 作用 |
+| --- | --- |
+| `Containerfile` | 只负责选基座、把 `build_files/` + `system_files/` 交给 `build.sh`、跑 `bootc container lint` |
+| `build_files/build.sh` | 所有安装与生成逻辑（按编号分 6 节） |
+| `build_files/VERSION` | **自己的**语义化版本，改功能/有破坏性变更时 bump |
+| `system_files/` | 静态文件，构建时原样复制到 `/`（含 GRUB 主题与资产库） |
+| `Justfile` | 本地与 CI 的统一入口（`just build` / `build-qcow2` / `run-vm-*` …） |
+| `image-template.env` | 项目身份：`IMAGE_NAME` / `REPO_ORGANIZATION` / 描述 / `DEFAULT_TAG` |
+| `disk_config/` | `disk.toml`（qcow2）、`iso.toml`（anaconda ISO，kickstart 指向本镜像） |
+| `.github/workflows/` | `build.yml`（构建 + 推送 + 签名）、`build-disk.yml`（qcow2 / ISO） |
 
-```bash
-IMAGE_NAME=silverblue /tmp/akmods-rpms/ublue-os/nvidia-install.sh
+## 镜像里加了什么
 
-KERNEL_VERSION="$(rpm -q --queryformat='%{VERSION}-%{RELEASE}.%{ARCH}' kernel-core)"
-export DRACUT_NO_XATTR=1
-dracut --no-hostonly --kver "$KERNEL_VERSION" --reproducible --add ostree \
-    -f "/usr/lib/modules/$KERNEL_VERSION/initramfs.img"
-chmod 0600 "/usr/lib/modules/$KERNEL_VERSION/initramfs.img"
-```
+### 1. 中文
 
-The base and akmods images must use the same Fedora release and exact kernel version. This example is for Universal Blue `*-main` images, not bases that already include NVIDIA drivers or use a custom kernel.
+- `langpacks-zh_CN` + `glibc-langpack-zh`（bootc 上无法事后用 PackageKit 补语言包）
+- `fcitx5` 全套；**关掉它的 XDG 自启动**，改由 KWin 的 `[Wayland] InputMethod` 拉起
+  （两个实例会抢 D-Bus 名字，后启动的抢不到会卸载全部 addon，表现为「输入法在但打不出字」）
+- `$HOME` 目录固定英文名（`user-dirs.conf` + `skel/.config/user-dirs.dirs`）
 
-Check [akmods hardware support](https://github.com/ublue-os/akmods#nvidia-hardware-support) before choosing a driver variant. With Secure Boot enabled, run `ujust enroll-secure-boot-key` on the installed system and complete enrollment at reboot.
+### 2. 代理
 
-### Step 2c: Changing Names
+- **Clash Verge Rev**：只装 rpm，不 enable 服务；首次在 GUI 开 TUN 时按提示装一次
+  `clash-verge-service`，装进可写层，升级不丢
+- **v2rayA**：官方 redhat rpm（主程序 + 配套 `v2raya_core` + geo 数据），Web UI 在
+  `http://127.0.0.1:2017`。**服务默认不自启**，按需启动：
 
-Change the `IMAGE_NAME` and `REPO_ORGANIZATION` variable inside the `image-template.env`
+  ```sh
+  sudo systemctl start v2raya     # 本次开机使用
+  sudo systemctl enable --now v2raya   # 想让它开机自启
+  ```
 
-To commit and push all the files changed and added in step 2 into your Github repository:
-```bash
-git add Containerfile image-template.env cosign.pub
-git commit -m "Initial Setup"
-git push
-```
-Once pushed, go look at the Actions tab on your Github repository's page.  The green checkmark should be showing on the top commit, which means your new image is ready!
+> 两个客户端不要同时开 TUN。
 
-## Step 3: Switch to Your Image
+### 3. NVIDIA 插电锁频
 
-From your bootc system, run the following command substituting in your Github username and image name where noted.
-```bash
-sudo bootc switch ghcr.io/<username>/<image_name>
-```
-This should queue your image for the next reboot, which you can do immediately after the command finishes. You have officially set up your custom image! See the following section for an explanation of the important parts of the template for customization.
+`udev` 在电源状态变化时拉起 oneshot：插电把核心频率下限固定为当前最大值（`nvidia-smi -lgc`），
+电池恢复默认（`-rgc`）。关闭：`sudo systemctl disable --now nvidia-clock-ac.service`。
 
-# Repository Contents
+### 4. 外观
 
-## Containerfile
+字体 `Maple Mono Normal NF CN` / `JetBrains Mono Nerd Font`，主题 `Fluent Light` + `Fluent11` 图标，
+均装进 `/usr/share`，系统级默认值写 `/etc/xdg/{kdeglobals,plasmarc,kwinrc}`，用户可在 `~/.config` 覆盖。
 
-The [Containerfile](./Containerfile) defines the operations used to customize the selected image.This file is the entrypoint for your image build, and works exactly like a regular podman Containerfile. For reference, please see the [Podman Documentation](https://docs.podman.io/en/latest/Introduction.html).
+### 5. GRUB
 
-## build.sh
+Vimix 4K 主题。bootc 里 `/boot` 是独立分区、镜像内的 `/boot` 会被 mask，所以主题放
+`/usr/share/grub/themes/vimix`，由 `grub-theme-sync.service` 在启动后同步进 `/boot` 并重生成
+`grub.cfg`（第二次启动起可见）。`/usr/share/grub/grub2-themes` 是上游完整资产库（684 图标 /
+20 背景 / 13 字体 / 5 布局），换配色见其中的 `README.md`。
 
-The [build.sh](./build_files/build.sh) file is called from your Containerfile. It is the best place to install new packages or make any other customization to your system. There are customization examples contained within it for your perusal.
-
-## build.yml
-
-The [build.yml](./.github/workflows/build.yml) Github Actions workflow creates your custom OCI image and publishes it to the Github Container Registry (GHCR). By default, the image name will match the Github repository name.
-
-# Building Disk Images
-
-This template provides an out of the box workflow for creating disk images (ISO, qcow, raw) for your custom OCI image which can be used to directly install onto your machines.
-
-This template provides a way to upload the disk images that is generated from the workflow to a S3 bucket. The disk images will also be available as an artifact from the job, if you wish to use an alternate provider. To upload to S3 we use [rclone](https://rclone.org/) which is able to use [many S3 providers](https://rclone.org/s3/).
-
-## Setting Up ISO Builds
-
-The [build-disk.yml](./.github/workflows/build-disk.yml) Github Actions workflow creates a disk image from your OCI image by utilizing the [bootc-image-builder](https://osbuild.org/docs/bootc/). In order to use this workflow you must complete the following steps:
-
-1. Modify `disk_config/iso.toml` to point to your custom container image before generating an ISO image.
-2. If you changed your image name from the default in `build.yml` then in the `build-disk.yml` file edit the `IMAGE_REGISTRY`, `IMAGE_NAME` and `DEFAULT_TAG` environment variables with the correct values. If you did not make changes, skip this step.
-3. Finally, if you want to upload your disk images to S3 then you will need to add your S3 configuration to the repository's Action secrets. This can be found by going to your repository settings, under `Secrets and Variables` -> `Actions`. You will need to add the following
-  - `S3_PROVIDER` - Must match one of the values from the [supported list](https://rclone.org/s3/)
-  - `S3_BUCKET_NAME` - Your unique bucket name
-  - `S3_ACCESS_KEY_ID` - It is recommended that you make a separate key just for this workflow
-  - `S3_SECRET_ACCESS_KEY` - See above.
-  - `S3_REGION` - The region your bucket lives in. If you do not know then set this value to `auto`.
-  - `S3_ENDPOINT` - This value will be specific to the bucket as well.
-
-Once the workflow is done, you'll find the disk images either in your S3 bucket or as part of the summary under `Artifacts` after the workflow is completed.
-
-# Artifacthub
-
-This template comes with the necessary tooling to index your image on [artifacthub.io](https://artifacthub.io). Use the `artifacthub-repo.yml` file at the root to verify yourself as the publisher. This is important to you for a few reasons:
-
-- The value of artifacthub is it's one place for people to index their custom images, and since we depend on each other to learn, it helps grow the community. 
-- You get to see your pet project listed with the other cool projects in Cloud Native.
-- Since the site puts your README front and center, it's a good way to learn how to write a good README, learn some marketing, finding your audience, etc. 
-
-[Discussion Thread](https://universal-blue.discourse.group/t/listing-your-custom-image-on-artifacthub/6446)
-
-# Justfile Documentation
-
-The `Justfile` contains various commands and configurations for building and managing container images and virtual machine images using Podman and other utilities. It is also used inside Github Actions.
-
-## Required Utilities
-
-Container build:
-- [just](https://just.systems/man/en/introduction.html)
-- [podman](https://docs.podman.io/en/latest)
-- [jq](https://jqlang.org)
-
-These are usually preinstalled on Universal Blue's Bootc Images.
-
-Linting:
-- shfmt
-- shellcheck
-
-## Environment Variables
-
-These are all sourced from the `image-template.env` file.
-
-- `image_name`: The name of the image (default: "image-template").
-- `default_tag`: The default tag for the image (default: "latest").
-- `bib_image`: The Bootc Image Builder (BIB) image (default: "quay.io/centos-bootc/bootc-image-builder:latest").
-
-## Building The Image
-
-All these recipes will work (with default values) without supplying any arguments to them, e.g. `just build`
-
-### `just build`
-
-Builds a container image using Podman.
-
-```bash
-just build $target_image $tag
-```
-
-Arguments:
-- `$target_image`: The tag you want to apply to the image (default: `$image_name`).
-- `$tag`: The tag for the image (default: `$default_tag`).
-
-### Rechunking
-We can flatten the layers of container images to make sure there isn't a single huge layer when your image gets published.
-This does not make your image faster to download, just provides better resumability.
-
-#### `just ostree-rechunk`
-Rechunks the existing Image with [rpm-ostree](https://coreos.github.io/rpm-ostree/build-chunked-oci/)
-
-```bash
-just ostree-rechunk $target_image $tag
-```
-
-#### `just rechunk`
-Rechunks the existing Image with [chunkah](https://github.com/coreos/chunkah), this is probably gonna be the default here at some point, try it out, it's cool.
-
-```bash
-just rechunk $target_image $tag
-```
-
-### Switching to the locally built image for testing
-
-The image has to be in the containers-storage owned by root, to be able to rebase to it, see the `_rootful_load_image` recipe.
-
-`sudo just build` and `sudo just ostree-rechunk` builds directly as root and allows you to skip the transfer to the root containers-storage.
-
-You can rebase to all the images that are in your containers-storage:
+## 版本号
 
 ```
-sudo podman image list --filter=label=containers.bootc=1
+45.20261125.0 . v0.1.0 . t3
+└─ 上游管系统 ┘ └你管功能┘ └ 同版本内的重建 ┘
 ```
 
-See [man bootc switch](https://bootc.dev/bootc/man/bootc-switch.8.html) for more info.
+| 段 | 来源 | 什么时候变 |
+| --- | --- | --- |
+| `45.20261125.0` | 基座 `/usr/lib/os-release` 的 `OSTREE_VERSION`（bazzite 用它；aurora 用 `IMAGE_VERSION`，代码会自动回退） | 基座发新构建（基本每天） |
+| `v0.1.0` | `build_files/VERSION`，手动维护 | 你改功能 / 有破坏性变更时 bump |
+| `t3` | 查 registry 上同版本元组已有的 `.tN` tag，取 `max+1` | 每次构建 +1；前两段一变自动回到 `t1` |
 
-```
-sudo bootc switch --transport containers-storage localhost/myimage:latest
-```
+写入位置（三处同源、互相校验）：
 
-and reboot your system!
+- OCI label `org.opencontainers.image.version` → `bootc status` 的 `Version`
+- `/usr/lib/os-release` 的 `VERSION` / `PRETTY_NAME` / `OSTREE_VERSION` / `BUILD_ID` /
+  `BOOTLOADER_NAME` → GRUB 标题、`hostnamectl`、fastfetch、KDE「关于」
+- `/usr/share/ublue-os/image-info.json` 的 `version` / `version-pretty`
+- 上游版本另存一份到 `/usr/share/bootc-image/upstream-version`
 
-## Building and Running Virtual Machines and ISOs
+`build.sh` 会独立推导一遍再和 `just build` 传入的值对账，不一致直接构建失败——避免
+`bootc status` 与 GRUB 标题显示的版本不是同一个。
 
-The below commands all build QCOW2 images. To produce or use a different type of image, substitute in the command with that type in the place of `qcow2`. The available types are `qcow2`, `iso`, and `raw`.
+切到某个具体构建：
 
-### `just build-qcow2`
-
-Builds a QCOW2 virtual machine image.
-
-```bash
-just build-qcow2 $target_image $tag
-```
-
-### `just rebuild-qcow2`
-
-Rebuilds a QCOW2 virtual machine image.
-
-```bash
-just rebuild-vm $target_image $tag
+```sh
+sudo bootc switch ghcr.io/linkcccp/bootc-image:45.20261125.0.v0.1.0.t3
 ```
 
-### `just run-vm-qcow2`
+> 版本 tag 会累积（约每天一个）。要清理时可删掉旧的 `.tN`，不影响已部署机器（它们按 digest 走）。
 
-Runs a virtual machine from a QCOW2 image.
+## 构建
 
-```bash
-just run-vm-qcow2 $target_image $tag
+```sh
+git lfs install && git lfs pull   # GRUB 资产在 Git LFS 里，缺这一步 build.sh 会直接报错
+just build                        # 推荐：自动算版本、传 label、写 output.env
 ```
 
-### `just spawn-vm`
+不用 `just` 时：
 
-Runs a virtual machine using systemd-vmspawn.
-
-```bash
-just spawn-vm rebuild="0" type="qcow2" ram="6G"
+```sh
+podman build -t ghcr.io/linkcccp/bootc-image:latest .
+# 此时没有版本参数，os-release 用推导值，OCI label 为 dev
 ```
 
-## File Management
+校验：`just check`（Justfile 语法）。镜像自检由 `build.sh` 末尾的断言 + `bootc container lint` 完成。
 
-### `just check`
+## 更新与回滚
 
-Checks the syntax of all `.just` files and the `Justfile`.
+| 操作 | 命令 |
+| --- | --- |
+| 自动更新 | 基座自带 `uupd.timer`，按当前 ref 自动 `bootc upgrade` |
+| 手动更新 | `sudo bootc upgrade` |
+| 立即生效 | `sudo systemctl reboot` |
+| 回滚 | `sudo bootc rollback` |
 
-### `just fix`
+构建期的升级策略是**跟随基座**：本仓库不跑 `dnf upgrade`，系统包版本由基座每天的新构建带来；
+我们自己装的包（fcitx5、clash、v2rayA…）在每次构建时按当时仓库的最新版本安装。个别包需要提前修时，
+在 `build.sh` 里精准升级即可（例如 `dnf5 upgrade -y --refresh openssl-libs`）。
 
-Fixes the syntax of all `.just` files and the `Justfile`.
+## CI
 
-### `just clean`
+| 工作流 | 触发 | 产物 |
+| --- | --- | --- |
+| `build.yml` | push 到 `main`、每天 10:05 UTC、手动、PR（仅验证） | 推送 `ghcr.io/linkcccp/bootc-image`（`latest` + 日期/sha 别名 + 版本 tag），并用 cosign 签名 |
+| `build-disk.yml` | 手动（可选上传 S3） | qcow2 + anaconda ISO（kickstart 装完后 `bootc switch` 到本镜像） |
 
-Cleans the repository by removing build artifacts.
+- 签名需要仓库 secret `SIGNING_SECRET`（cosign 私钥，**必须空密码**，workflow 不提供 `COSIGN_PASSWORD`）
+- 验证签名（公钥 `cosign.pub` 随仓库分发）：
 
-### `just lint`
+  ```sh
+  cosign verify --key cosign.pub ghcr.io/linkcccp/bootc-image:latest
+  ```
 
-Runs shell check on all Bash scripts.
+- `build.yml` 的 checkout 必须保留 `lfs: true`，否则 GRUB 资源会以 LFS 指针形式进入镜像
+- ISO 构建用的是 registry 上的 `:latest`，所以先让 `build.yml` 成功推送过一次
 
-### `just format`
+## 开机后要做的三件事
 
-Runs shfmt on all Bash scripts.
+1. **输入法**：系统设置 → 输入法 → 添加「拼音（Fcitx 5）」
+2. **Clash**：打开 Clash Verge Rev → 导入订阅 → 开 TUN 时按提示装一次服务
+3. **v2rayA**：`sudo systemctl start v2raya` → 浏览器打开 `http://127.0.0.1:2017` → 创建管理员 → 导入订阅
 
-## Additional resources
+自检：
 
-For additional driver support, ublue maintains a set of scripts and container images available at [ublue-akmod](https://github.com/ublue-os/akmods). These images include the necessary scripts to install multiple kernel drivers within the container (Nvidia, OpenRazer, Framework...). The documentation provides guidance on how to properly integrate these drivers into your container image.
+```sh
+bootc status
+systemctl status nvidia-clock-ac
+systemctl is-enabled v2raya        # 应为 disabled（按需手动 start）
+rpm -q fcitx5 fcitx5-chinese-addons langpacks-zh_CN
+fc-match "Maple Mono Normal NF CN"
+ls /usr/share/plasma/desktoptheme/Fluent-light
+```
 
-## Community Examples
+## 已知限制
 
-These are images derived from this template (or similar enough to this template). Reference them when building your image!
-
-- [m2Giles' OS](https://github.com/m2giles/m2os)
-- [bOS](https://github.com/bsherman/bos)
-- [Homer](https://github.com/bketelsen/homer/)
-- [Amy OS](https://github.com/astrovm/amyos)
-- [VeneOS](https://github.com/Venefilyn/veneos)
+- 本机构建若算出序号但没推送，下次 CI 可能复用同一个 `.tN`（版本号相同、内容不同）
+- 版本 tag 目前不自动清理
+- `system_files/etc/default/grub` 会整体覆盖基座同名文件（`GRUB_CMDLINE_LINUX="rhgb quiet"`）；
+  内核参数实际由 bootc 的 kargs 机制管理，不受影响

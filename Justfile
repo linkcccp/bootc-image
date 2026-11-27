@@ -100,14 +100,74 @@ build $target_image=image_name $tag=default_tag:
 
     BUILD_ARGS=()
     LABELS=()
+
+    # Image version: "<upstream version>.v<build_files/VERSION>", e.g. 45.20261125.0.v0.1.0.
+    # The upstream part is read from the base image's os-release — the same field build.sh
+    # reads — so the OCI label and /usr/lib/os-release cannot drift apart.
+    BASE_IMAGE="$(awk '/^FROM / && $2 !~ /^scratch$/ { print $2; exit }' Containerfile)"
+    podman pull --quiet "${BASE_IMAGE}" >/dev/null
+    UPSTREAM_RAW="$(podman run --rm --entrypoint /bin/bash "${BASE_IMAGE}" -c \
+        'grep -E "^(IMAGE_VERSION|OSTREE_VERSION)=" /usr/lib/os-release | head -n 1 | cut -d= -f2-')"
+    UPSTREAM_VERSION="${UPSTREAM_RAW//\"/}"
+    UPSTREAM_VERSION="${UPSTREAM_VERSION//\'/}"
+    UPSTREAM_VERSION="${UPSTREAM_VERSION//[[:space:]]/}"
+    if [[ ! "${UPSTREAM_VERSION}" =~ ^[0-9] ]]; then
+        echo "Cannot derive the upstream version from ${BASE_IMAGE} (got '${UPSTREAM_VERSION}')" >&2
+        exit 1
+    fi
+    OWN_VERSION="$(tr -d '[:space:]' < build_files/VERSION)"
+    BASE_VERSION="${UPSTREAM_VERSION}.v${OWN_VERSION}"
+
+    # Build serial: existing registry tags for this exact <upstream>.v<own> tuple are the
+    # counter's storage. No matching tag => first build => t1. Bumping either version makes
+    # the tuple change, which resets the serial by construction — no state file needed.
+    IMAGE_VERSION="${BASE_VERSION}.t1"
+    REGISTRY_OWNER="${repo_organization,,}"
+    REGISTRY_PATH="${image_name,,}"
+    REGISTRY_TOKEN="$(curl -fsS --retry 3 --retry-all-errors \
+        "https://ghcr.io/token?service=ghcr.io&scope=repository:${REGISTRY_OWNER}/${REGISTRY_PATH}:pull" |
+        jq -r '.token // empty' 2>/dev/null || true)"
+    REGISTRY_TAGS=""
+    if [[ -n "${REGISTRY_TOKEN}" ]]; then
+        # keep the bearer token out of the xtrace output
+        set +x
+        REGISTRY_TAGS="$(curl -fsS --retry 3 --retry-all-errors \
+            -H "Authorization: Bearer ${REGISTRY_TOKEN}" \
+            "https://ghcr.io/v2/${REGISTRY_OWNER}/${REGISTRY_PATH}/tags/list?n=1000" 2>/dev/null || true)"
+        set -x
+    fi
+    if [[ -z "${REGISTRY_TAGS}" ]]; then
+        echo "warning: 读不到 ghcr.io/${REGISTRY_OWNER}/${REGISTRY_PATH} 的 tag 列表（包不存在/未公开/离线），构建序号按 t1" >&2
+    else
+        # n=1000 is the ghcr page size; enough for a personal image (old .tN tags can be pruned)
+        LAST_SERIAL="$(printf '%s\n' "${REGISTRY_TAGS}" | jq -r '.tags[]?' 2>/dev/null |
+            grep -E "^${BASE_VERSION//./\\.}\.t[0-9]+$" |
+            sed 's/.*\.t//' | sort -n | tail -n 1 || true)"
+        if [[ -n "${LAST_SERIAL}" ]]; then
+            IMAGE_VERSION="${BASE_VERSION}.t$((LAST_SERIAL + 1))"
+        fi
+    fi
+    BUILD_VERSION="${IMAGE_VERSION}"
+    printf 'IMAGE_VERSION=%s\n' "${IMAGE_VERSION}" >output.env
+    echo "Image version: ${IMAGE_VERSION}"
+    BUILD_REVISION="unknown"
+    BUILD_CREATED="$(git log -1 --format=%cI 2>/dev/null || true)"
+    BUILD_CREATED="${BUILD_CREATED:-1970-01-01T00:00:00Z}"
+
     if [[ -z "$(git status -s)" ]]; then
         GIT_SHA=$(git rev-parse --short HEAD)
+        BUILD_REVISION="${GIT_SHA}"
         LABELS+=("--label" "io.artifacthub.package.readme-url=https://raw.githubusercontent.com/{{ repo_organization }}/{{ image_name }}/${GIT_SHA}/README.md")
         LABELS+=("--label" "org.opencontainers.image.documentation=https://raw.githubusercontent.com/{{ repo_organization }}/{{ image_name }}/${GIT_SHA}/README.md")
         LABELS+=("--label" "org.opencontainers.image.source=https://github.com/{{ repo_organization }}/{{ image_name }}/blob/${GIT_SHA}/Containerfile")
         LABELS+=("--label" "org.opencontainers.image.url=https://github.com/{{ repo_organization }}/{{ image_name }}/tree/${GIT_SHA}")
-        LABELS+=("--label" "org.opencontainers.image.version={{ default_tag }}.$(date +%Y%m%d)-${GIT_SHA}")
     fi
+
+    # org.opencontainers.image.version / revision / created come from the Containerfile
+    # LABELs fed by these build args (a --label here would silently win and skew the version)
+    BUILD_ARGS+=("--build-arg" "BUILD_VERSION=${BUILD_VERSION}")
+    BUILD_ARGS+=("--build-arg" "BUILD_REVISION=${BUILD_REVISION}")
+    BUILD_ARGS+=("--build-arg" "BUILD_CREATED=${BUILD_CREATED}")
 
     # Image metadata for https://artifacthub.io/ - This is optional but is highly recommended so we all can get a index of all the custom images
     # The metadata by itself is not going to do anything, you choose if you want your image to be on ArtifactHub or not.
@@ -116,7 +176,7 @@ build $target_image=image_name $tag=default_tag:
     LABELS+=("--label" "io.artifacthub.package.license=Apache-2.0")
     LABELS+=("--label" "io.artifacthub.package.logo-url={{ image_logo_url }}")
     LABELS+=("--label" "io.artifacthub.package.prerelease=false")
-    LABELS+=("--label" "org.opencontainers.image.created=$(date -u +%Y\-%m\-%d\T%H\:%M\:%S\Z)")
+    LABELS+=("--label" "org.opencontainers.image.created=${BUILD_CREATED}")
     LABELS+=("--label" "org.opencontainers.image.description={{ image_desc }}")
     LABELS+=("--label" "org.opencontainers.image.title={{ image_name }}")
     LABELS+=("--label" "org.opencontainers.image.vendor={{ repo_organization }}")
@@ -200,6 +260,13 @@ generate-build-tags $target_image=image_name $tag=default_tag:
     #!/usr/bin/env bash
     set -eoux pipefail
 
+    # `just build` records the version it built (including the .tN serial) in output.env;
+    # tag it as well so every build stays addressable and the serial can be counted next time.
+    if [[ -f output.env ]]; then
+        # shellcheck disable=SC1091
+        source output.env
+    fi
+
     DATE=$(date +%Y%m%d)
     BUILD_TAGS=()
     if [[ -z "$(git status -s)" ]]; then
@@ -212,6 +279,9 @@ generate-build-tags $target_image=image_name $tag=default_tag:
     BUILD_TAGS+=("${DATE}")
     BUILD_TAGS+=("${tag}")
     BUILD_TAGS+=("${tag}-${DATE}")
+    if [[ -n "${IMAGE_VERSION:-}" ]]; then
+        BUILD_TAGS+=("${IMAGE_VERSION}")
+    fi
 
     echo "${BUILD_TAGS[@]}"
 
