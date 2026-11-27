@@ -147,6 +147,12 @@ jobs:
           # the upstream base image and keeps downloads/delta updates smaller.
           # --force-compression recompresses even if the destination already holds
           # a differently-compressed variant of a layer.
+          #
+          # Recompressing a layer drops its ostree.components annotation, so the
+          # first tag pushed below would be published without those annotations.
+          # Push that tag once more at the end: the zstd blobs now exist and are
+          # reused, and the reuse path keeps the annotations intact.
+          first_tag="${ALIAS_TAGS%% *}"
           for tag in ${ALIAS_TAGS}; do
             podman push --digestfile=/tmp/digestfile \
               --compression-format=zstd \
@@ -154,6 +160,12 @@ jobs:
               --force-compression \
               ${IMAGE_NAME}:${tag} ${IMAGE_REGISTRY}/${IMAGE_NAME}:${tag}
           done
+
+          podman push --digestfile=/tmp/digestfile \
+            --compression-format=zstd \
+            --compression-level=3 \
+            --force-compression \
+            ${IMAGE_NAME}:${first_tag} ${IMAGE_REGISTRY}/${IMAGE_NAME}:${first_tag}
 
           digest=$(< /tmp/digestfile)
 
