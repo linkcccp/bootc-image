@@ -146,6 +146,7 @@ podman build -t ghcr.io/linkcccp/bootc-image:latest .
   ```
 
 - `build.yml` 的 checkout 必须保留 `lfs: true`，否则 GRUB 资源会以 LFS 指针形式进入镜像
+- rechunk（`rpm-ostree compose build-chunked-oci`）固定产出 gzip 层，推送时会用 `podman push --compression-format=zstd --force-compression` 重压成 zstd，与上游基座一致、体积更小
 - ISO 构建用的是 registry 上的 `:latest`，所以先让 `build.yml` 成功推送过一次
 
 ## 开机后要做的三件事

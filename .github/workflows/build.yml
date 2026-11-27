@@ -142,8 +142,17 @@ jobs:
           ALIAS_TAGS: ${{ steps.gen-build-tags.outputs.alias_tags }}
         run: |
           set -euox pipefail
+          # The rechunker (rpm-ostree compose build-chunked-oci) always emits gzip
+          # layers. Recompress to zstd at push time so the published image matches
+          # the upstream base image and keeps downloads/delta updates smaller.
+          # --force-compression recompresses even if the destination already holds
+          # a differently-compressed variant of a layer.
           for tag in ${ALIAS_TAGS}; do
-            podman push --digestfile=/tmp/digestfile ${IMAGE_NAME}:${tag} ${IMAGE_REGISTRY}/${IMAGE_NAME}:${tag}
+            podman push --digestfile=/tmp/digestfile \
+              --compression-format=zstd \
+              --compression-level=3 \
+              --force-compression \
+              ${IMAGE_NAME}:${tag} ${IMAGE_REGISTRY}/${IMAGE_NAME}:${tag}
           done
 
           digest=$(< /tmp/digestfile)
