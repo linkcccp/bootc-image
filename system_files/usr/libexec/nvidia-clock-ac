@@ -2,7 +2,10 @@
 set -u
 
 nvidia_smi=$(command -v nvidia-smi || true)
-[ -n "$nvidia_smi" ] || exit 0
+if [ -z "$nvidia_smi" ]; then
+    echo "nvidia-clock-ac: 未找到 nvidia-smi，无法调整显卡频率；请确认 NVIDIA 驱动已正确安装。" >&2
+    exit 1
+fi
 
 mains_found=0
 ac_online=0
@@ -16,16 +19,38 @@ for supply in /sys/class/power_supply/*; do
     fi
 done
 
+# 电池供电时恢复默认频率范围；台式机没有 Mains 设备（mains_found=0），始终走锁频分支。
 if [ "$mains_found" -eq 1 ] && [ "$ac_online" -eq 0 ]; then
-    "$nvidia_smi" -rgc >/dev/null 2>&1 || true
+    if "$nvidia_smi" -rgc >/dev/null 2>&1; then
+        echo "nvidia-clock-ac: 使用电池供电，已恢复显卡默认频率。"
+    else
+        echo "nvidia-clock-ac: 恢复显卡默认频率失败；请检查 NVIDIA 驱动状态。" >&2
+        exit 1
+    fi
     exit 0
 fi
 
+# 上限取显卡自身的最大图形频率，下限按同一比例推导，避免把高端卡压到低端卡的频率。
 max_clock=$("$nvidia_smi" --query-gpu=clocks.max.graphics --format=csv,noheader,nounits 2>/dev/null |
     head -n 1 | tr -d '[:space:]')
 case "$max_clock" in
-    ''|*[!0-9]*) max_clock=2100 ;;
+    ''|*[!0-9]*)
+        echo "nvidia-clock-ac: 读取显卡最大频率失败（nvidia-smi 无有效输出），已跳过锁频；可能没有 NVIDIA 显卡，或驱动尚未就绪。" >&2
+        exit 1
+        ;;
 esac
-[ "$max_clock" -ge 900 ] || exit 0
+if [ "$max_clock" -le 0 ]; then
+    echo "nvidia-clock-ac: 显卡报告的最大频率为 ${max_clock}MHz，数值异常，已跳过锁频。" >&2
+    exit 1
+fi
 
-"$nvidia_smi" -lgc "900,$max_clock" >/dev/null 2>&1 || true
+# 锁频下限占最大频率的百分比（3050 约 840MHz，4090 约 1240MHz）。
+floor_percent=40
+min_clock=$((max_clock * floor_percent / 100))
+
+if "$nvidia_smi" -lgc "${min_clock},${max_clock}" >/dev/null 2>&1; then
+    echo "nvidia-clock-ac: 已将显卡频率锁定在 ${min_clock}-${max_clock}MHz。"
+else
+    echo "nvidia-clock-ac: 锁定显卡频率 ${min_clock}-${max_clock}MHz 失败；当前驱动可能不支持 -lgc，显卡将保持默认调频。" >&2
+    exit 1
+fi

@@ -79,6 +79,10 @@ if [ -z "$url" ]; then
         https://api.github.com/repos/clash-verge-rev/clash-verge-rev/releases/latest |
         jq -er '[.assets[] | select(.name | test("\\.(x86_64|amd64|x64)\\.rpm$"; "i"))][0].browser_download_url')"
 fi
+if [ -z "$url" ]; then
+    echo "无法解析 Clash Verge rpm 地址（匿名 GitHub API 可能被限流？可通过 CLASH_VERGE_RPM_URL 传入）" >&2
+    exit 1
+fi
 curl -fsSL --retry 3 --retry-all-errors -o /tmp/clash-verge.rpm "$url"
 dnf5 install -y /tmp/clash-verge.rpm
 rm -f /tmp/clash-verge.rpm
@@ -107,7 +111,7 @@ case "$arch" in
     amd64) rpmarch=x64 ;;
     arm64) rpmarch=arm64 ;;
     *)
-        echo "unsupported arch for v2rayA rpm: $arch" >&2
+        echo "v2rayA rpm 不支持的架构：$arch" >&2
         exit 1
         ;;
 esac
@@ -119,6 +123,10 @@ if [ -z "$url" ]; then
         https://api.github.com/repos/v2rayA/v2rayA/releases/latest | jq -er .tag_name)"
     ver="${tag#v}"
     url="https://github.com/v2rayA/v2rayA/releases/download/${tag}/installer_redhat_${rpmarch}_${ver}.rpm"
+fi
+if [ -z "$url" ]; then
+    echo "无法解析 v2rayA rpm 地址（匿名 GitHub API 可能被限流？可通过 V2RAYA_RPM_URL 传入）" >&2
+    exit 1
 fi
 curl -fsSL --retry 3 --retry-all-errors -o /tmp/v2raya.rpm "$url"
 dnf5 install -y /tmp/v2raya.rpm
@@ -133,10 +141,11 @@ dnf5 clean all
 systemctl disable v2raya.service
 
 # ---------------------------------------------------------------------------
-# 3. NVIDIA 插电锁频
+# 3. NVIDIA 锁频
 # ---------------------------------------------------------------------------
-# udev 规则在电源状态变化时拉起这个 oneshot：插电时把核心频率下限固定为当前
-# 最大值（nvidia-smi -lgc），切到电池时恢复默认（nvidia-smi -rgc）。
+# udev 规则在电源状态变化时拉起这个 oneshot：插电时把核心频率锁定在显卡最大
+# 频率的 40% 到最大值之间（nvidia-smi -lgc），切到电池时恢复默认（nvidia-smi -rgc）。
+# 台式机没有 Mains 设备，开机即生效。
 # nvidia-powerd 由基座的 nvidia 变体提供；脚本/单元/规则由 system_files 提供。
 chmod 0755 /usr/libexec/nvidia-clock-ac
 systemctl enable nvidia-clock-ac.service

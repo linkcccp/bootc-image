@@ -15,7 +15,7 @@ FROM ghcr.io/ublue-os/bazzite-dx-nvidia:latest
 | KDE Plasma（Kinoite 基础）、NVIDIA open 驱动与 kargs | 中文语言包 + fcitx5 输入法 |
 | flatpak / Flathub、podman、distrobox、brew | Clash Verge Rev（GUI + TUN） |
 | VS Code、Docker CE、incus/libvirt、Cockpit（DX 变体） | v2rayA（Web UI + 内置核心） |
-| uupd 自动更新、Secure Boot 签名链路 | NVIDIA 插电锁频、字体、KDE 主题、Vimix GRUB 主题 |
+| uupd 自动更新、Secure Boot 签名链路 | NVIDIA 锁频、字体、KDE 主题、Vimix GRUB 主题 |
 
 ## 目录结构（官方约定）
 
@@ -53,10 +53,12 @@ FROM ghcr.io/ublue-os/bazzite-dx-nvidia:latest
 
 > 两个客户端不要同时开 TUN。
 
-### 3. NVIDIA 插电锁频
+### 3. NVIDIA 锁频
 
-`udev` 在电源状态变化时拉起 oneshot：插电把核心频率下限固定为当前最大值（`nvidia-smi -lgc`），
-电池恢复默认（`-rgc`）。关闭：`sudo systemctl disable --now nvidia-clock-ac.service`。
+`udev` 在电源状态变化时拉起 oneshot：插电把核心频率锁定在"显卡自身最大频率的 40% ~ 最大频率"
+（`nvidia-smi -lgc`），电池恢复默认（`-rgc`）。台式机没有电池，开机即生效。
+成功/失败原因写入 journal：`journalctl -u nvidia-clock-ac -b`。
+关闭：`sudo systemctl disable --now nvidia-clock-ac.service`。
 
 ### 4. 外观
 
@@ -65,7 +67,9 @@ FROM ghcr.io/ublue-os/bazzite-dx-nvidia:latest
 
 ### 5. GRUB
 
-Vimix 4K 主题。bootc 里 `/boot` 是独立分区、镜像内的 `/boot` 会被 mask，所以主题放
+Vimix 4K 主题。GRUB 图形分辨率依次尝试 4K / 2560x1600 / 1440p / 1080p，最后回退
+固件 `auto`；保证菜单至少 1080p，同时高分辨率屏仍用原生模式。
+主题按百分比布局，适配任意分辨率。bootc 里 `/boot` 是独立分区、镜像内的 `/boot` 会被 mask，所以主题放
 `/usr/share/grub/themes/vimix`，由 `grub-theme-sync.service` 在启动后同步进 `/boot` 并重生成
 `grub.cfg`（第二次启动起可见）。`/usr/share/grub/grub2-themes` 是上游完整资产库（684 图标 /
 20 背景 / 13 字体 / 5 布局），换配色见其中的 `README.md`。

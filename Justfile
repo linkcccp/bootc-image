@@ -22,10 +22,10 @@ default:
 check:
     #!/usr/bin/env bash
     find . -type f -name "*.just" | while read -r file; do
-    	echo "Checking syntax: $file"
+    	echo "检查语法：$file"
     	just --unstable --fmt --check -f $file
     done
-    echo "Checking syntax: Justfile"
+    echo "检查语法：Justfile"
     just --unstable --fmt --check -f Justfile
 
 # Fix Just Syntax
@@ -33,10 +33,10 @@ check:
 fix:
     #!/usr/bin/env bash
     find . -type f -name "*.just" | while read -r file; do
-    	echo "Checking syntax: $file"
+    	echo "检查语法：$file"
     	just --unstable --fmt -f $file
     done
-    echo "Checking syntax: Justfile"
+    echo "检查语法：Justfile"
     just --unstable --fmt -f Justfile || { exit 1; }
 
 # Clean Repo
@@ -112,7 +112,7 @@ build $target_image=image_name $tag=default_tag:
     UPSTREAM_VERSION="${UPSTREAM_VERSION//\'/}"
     UPSTREAM_VERSION="${UPSTREAM_VERSION//[[:space:]]/}"
     if [[ ! "${UPSTREAM_VERSION}" =~ ^[0-9] ]]; then
-        echo "Cannot derive the upstream version from ${BASE_IMAGE} (got '${UPSTREAM_VERSION}')" >&2
+        echo "无法从 ${BASE_IMAGE} 推导上游版本（得到 '${UPSTREAM_VERSION}'）" >&2
         exit 1
     fi
     OWN_VERSION="$(tr -d '[:space:]' < build_files/VERSION)"
@@ -137,7 +137,7 @@ build $target_image=image_name $tag=default_tag:
         set -x
     fi
     if [[ -z "${REGISTRY_TAGS}" ]]; then
-        echo "warning: 读不到 ghcr.io/${REGISTRY_OWNER}/${REGISTRY_PATH} 的 tag 列表（包不存在/未公开/离线），构建序号按 t1" >&2
+        echo "警告：读不到 ghcr.io/${REGISTRY_OWNER}/${REGISTRY_PATH} 的 tag 列表（包不存在/未公开/离线），构建序号按 t1" >&2
     else
         # n=1000 is the ghcr page size; enough for a personal image (old .tN tags can be pruned)
         LAST_SERIAL="$(printf '%s\n' "${REGISTRY_TAGS}" | jq -r '.tags[]?' 2>/dev/null |
@@ -149,7 +149,7 @@ build $target_image=image_name $tag=default_tag:
     fi
     BUILD_VERSION="${IMAGE_VERSION}"
     printf 'IMAGE_VERSION=%s\n' "${IMAGE_VERSION}" >output.env
-    echo "Image version: ${IMAGE_VERSION}"
+    echo "镜像版本：${IMAGE_VERSION}"
     BUILD_REVISION="unknown"
     BUILD_CREATED="$(git log -1 --format=%cI 2>/dev/null || true)"
     BUILD_CREATED="${BUILD_CREATED:-1970-01-01T00:00:00Z}"
@@ -168,6 +168,14 @@ build $target_image=image_name $tag=default_tag:
     BUILD_ARGS+=("--build-arg" "BUILD_VERSION=${BUILD_VERSION}")
     BUILD_ARGS+=("--build-arg" "BUILD_REVISION=${BUILD_REVISION}")
     BUILD_ARGS+=("--build-arg" "BUILD_CREATED=${BUILD_CREATED}")
+
+    # CI resolves the upstream rpm URLs through an authenticated GitHub API call and
+    # exports them; forward them so build.sh skips its anonymous (rate-limited) fallback.
+    for var in CLASH_VERGE_RPM_URL V2RAYA_RPM_URL; do
+        if [[ -n "${!var:-}" ]]; then
+            BUILD_ARGS+=("--build-arg" "${var}=${!var}")
+        fi
+    done
 
     # Image metadata for https://artifacthub.io/ - This is optional but is highly recommended so we all can get a index of all the custom images
     # The metadata by itself is not going to do anything, you choose if you want your image to be on ArtifactHub or not.
@@ -335,7 +343,7 @@ _rootful_load_image $target_image=image_name $tag=default_tag:
 
     # Check if already running as root or under sudo
     if [[ -n "${SUDO_USER:-}" || "${UID}" -eq "0" ]]; then
-        echo "Already root or running under sudo, no need to load image from user podman."
+        echo "已经是 root 或通过 sudo 运行，无需从用户 podman 加载镜像。"
         exit 0
     fi
 
@@ -454,8 +462,8 @@ _run-vm $target_image $tag $type $config:
     while grep -q :${port} <<< $(ss -tunalp); do
         port=$(( port + 1 ))
     done
-    echo "Using Port: ${port}"
-    echo "Connect to http://localhost:${port}"
+    echo "使用端口：${port}"
+    echo "访问 http://localhost:${port}"
 
     # Set up the arguments for running the VM
     run_args=()
@@ -494,7 +502,7 @@ spawn-vm rebuild="0" type="qcow2" ram="6G":
 
     set -euo pipefail
 
-    [ "{{ rebuild }}" -eq 1 ] && echo "Rebuilding the ISO" && just build-vm {{ rebuild }} {{ type }}
+    [ "{{ rebuild }}" -eq 1 ] && echo "重新构建 ISO" && just build-vm {{ rebuild }} {{ type }}
 
     systemd-vmspawn \
       -M "bootc-image" \
@@ -511,7 +519,7 @@ lint:
     set -eoux pipefail
     # Check if shellcheck is installed
     if ! command -v shellcheck &> /dev/null; then
-        echo "shellcheck could not be found. Please install it."
+        echo "找不到 shellcheck，请先安装。"
         exit 1
     fi
     # Run shellcheck on all Bash scripts
@@ -523,7 +531,7 @@ format:
     set -eoux pipefail
     # Check if shfmt is installed
     if ! command -v shfmt &> /dev/null; then
-        echo "shfmt could not be found. Please install it."
+        echo "找不到 shfmt，请先安装。"
         exit 1
     fi
     # Run shfmt on all Bash scripts

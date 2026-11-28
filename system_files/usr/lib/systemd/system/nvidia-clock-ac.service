@@ -1,5 +1,5 @@
 [Unit]
-Description=Set NVIDIA GPU clock floor when on AC
+Description=Set NVIDIA GPU clock floor on AC (always on desktops)
 After=nvidia-powerd.service systemd-udev-settle.service
 Wants=nvidia-powerd.service
 

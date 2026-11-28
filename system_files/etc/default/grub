@@ -9,7 +9,9 @@ GRUB_DISABLE_RECOVERY="true"
 GRUB_CMDLINE_LINUX="rhgb quiet"
 GRUB_ENABLE_BLSCFG=true
 GRUB_TERMINAL_OUTPUT="gfxterm"
-GRUB_GFXMODE=2560x1600,auto
+# 依次尝试 4K / 16:10 原生 / 1440p / 1080p，最后交给固件 auto：
+# 保证菜单至少 1080p，同时不把高分辨率屏锁在低模式。
+GRUB_GFXMODE=3840x2160,2560x1600,2560x1440,1920x1080,auto
 GRUB_THEME="/boot/grub2/themes/vimix/theme.txt"
 # grub2-mkconfig 先 export 该变量为 yes、之后才 source 本文件，
 # 所以这里设 no 能兜住“有人裸跑 grub2-mkconfig”的情况，

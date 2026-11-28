@@ -70,6 +70,41 @@ jobs:
           echo "IMAGE_REGISTRY=${IMAGE_REGISTRY,,}" >> ${GITHUB_ENV}
           echo "IMAGE_NAME=${IMAGE_NAME,,}" >> ${GITHUB_ENV}
 
+      # Resolve the upstream rpm URLs with the workflow token and pass them to the
+      # build as build args. Anonymous calls to api.github.com are limited to 60
+      # req/h per shared runner IP, which randomly fails the build with HTTP 403.
+      # The token itself never enters the build container or the image.
+      - name: Resolve upstream RPM URLs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          api() {
+            curl -fsSL --retry 3 --retry-all-errors \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H 'Accept: application/vnd.github+json' "$1"
+          }
+
+          clash_url="$(api https://api.github.com/repos/clash-verge-rev/clash-verge-rev/releases/latest |
+            jq -er '[.assets[] | select(.name | test("\\.(x86_64|amd64|x64)\\.rpm$"; "i"))][0].browser_download_url')"
+
+          case "$(uname -m)" in
+            x86_64)  rpmarch=x64 ;;
+            aarch64) rpmarch=arm64 ;;
+            *)
+              echo "v2rayA rpm 不支持的运行器架构：$(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+          v2raya_tag="$(api https://api.github.com/repos/v2rayA/v2rayA/releases/latest | jq -er .tag_name)"
+          v2raya_url="https://github.com/v2rayA/v2rayA/releases/download/${v2raya_tag}/installer_redhat_${rpmarch}_${v2raya_tag#v}.rpm"
+
+          echo "CLASH_VERGE_RPM_URL=${clash_url}" >> "${GITHUB_ENV}"
+          echo "V2RAYA_RPM_URL=${v2raya_url}" >> "${GITHUB_ENV}"
+          echo "Clash Verge 安装包地址：${clash_url}"
+          echo "v2rayA 安装包地址：${v2raya_url}"
+
       # This actually builds the container image
       - name: Build Image
         id: build-image
@@ -84,7 +119,7 @@ jobs:
         run: |
           test -f output.env
           cat output.env >> "${GITHUB_ENV}"
-          echo "Built version: ${IMAGE_VERSION}"
+          echo "构建版本：${IMAGE_VERSION}"
 
       # This is optional, this provides smaller delta updates
       - name: Rechunk with rpm-ostree
@@ -111,7 +146,7 @@ jobs:
                         ${IMAGE_NAME} \
                         ${DEFAULT_TAG})"
 
-          echo "Tags for this Action..."
+          echo "本次 Action 的标签..."
           echo "${alias_tags}"
           echo "alias_tags=${alias_tags}" >> $GITHUB_OUTPUT
 

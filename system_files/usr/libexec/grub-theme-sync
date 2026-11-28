@@ -55,7 +55,7 @@ grub2-mkconfig --no-grubenv-update -o "$grub_cfg"
 ostree_after=$(grep -h '^options ' "$bls_dir"/*.conf 2>/dev/null | grep -c 'ostree=' || true)
 
 if [ "$ostree_after" -lt "$ostree_before" ]; then
-    echo "grub-theme-sync: BLS options lost ostree= ($ostree_before -> $ostree_after)" >&2
+    echo "grub-theme-sync: BLS 选项丢失 ostree=（$ostree_before -> $ostree_after）" >&2
     exit 1
 fi
 
